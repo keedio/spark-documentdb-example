@@ -1,22 +1,25 @@
 package com.keedio.azure.documentdb.example
 
+import java.util.UUID
+
 import com.keedio.azure.documentdb.{DocumentDBSparkUtils, DocumentDBConf}
-import com.microsoft.azure.documentdb.Document
-import com.microsoft.azure.documentdb.hadoop.DocumentDBWritable
 import com.typesafe.config.ConfigFactory
 import com.typesafe.scalalogging.slf4j.LazyLogging
-import org.apache.hadoop.io.Text
+import evo.insight.common.{Category, Payment}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.rdd.RDD._
 import org.apache.spark.{SparkConf, SparkContext}
-import org.json.JSONObject
+
+import muster.codec.jawn.api._
+import DocumentDBSparkUtils._
+
+import scala.util.Random
 
 /**
  * Tests writing an example file to DocumentDB and reading data back.
  *
  * Created by Luca Rosellini <lrosellini@keedio.com> on 18/12/15.
  */
-object SaveToDocumentDbTest extends App with LazyLogging {
+object SaveToDocumentDbObjectRDDExample extends App with LazyLogging {
   val config = ConfigFactory.load()
 
   implicit val ddbConf = DocumentDBConf(
@@ -33,31 +36,16 @@ object SaveToDocumentDbTest extends App with LazyLogging {
 
   val sc: SparkContext = new SparkContext(sparkConfig)
 
-  val file = sc.textFile("pg1012.txt")
+  val payments =
+    for (i <- 1 to 10000) yield {
+      Payment(UUID.randomUUID().toString,
+        Random.nextString(9), Random.nextString(10), System.currentTimeMillis(), Random.nextFloat(), Random.nextString(20),
+        Category(Random.nextInt(), Random.nextString(15)))
+    }
 
-  val counts = file.flatMap(line => line.split(" "))
-    .map(word => (word, 1))
-    .reduceByKey(_ + _)
-
-  logger.info(s"read ${counts.count()} lines from input file")
-
-  import DocumentDBSparkUtils._
-
-  /*
-   * for each word sends to DocumentDB a simple JSON representing the word with the associated count.
-   */
-  counts.saveToDocumentDB({
-    new Text(_)
-
-  }, { t: (String, Int) => {
-    val jobj = new JSONObject
-    jobj.put("word", t._1)
-    jobj.put("count", t._2)
-    jobj
-  }
-  })
+  val rdd: RDD[Payment] = sc.parallelize(payments)
 
 
-
+  rdd.saveToDocumentDB({e: Payment => e.asJson})
 }
 
